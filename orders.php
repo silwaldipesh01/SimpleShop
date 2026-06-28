@@ -48,32 +48,69 @@ foreach ($rows as $row) {
             <p class="message">No orders found.</p>
         <?php else: ?>
             <?php foreach ($groupedOrders as $orderId => $order): ?>
-                <section class="order-block">
-                    <h2>Order ID: <?php echo htmlspecialchars($orderId); ?></h2>
-                    <p>Transaction Date: <?php echo htmlspecialchars($order['order_date']); ?></p>
-                    <p class="delivery-countdown" data-delivery="<?php echo date('Y-m-d H:i:s', strtotime($order['order_date'] . ' +3 days')); ?>"></p>
+                <?php
+                    $total = 0;
+                    foreach ($order['items'] as $item) {
+                        $total += $item['price'] * $item['quantity'];
+                    }
+                    $deliveryDate = date('Y-m-d H:i:s', strtotime($order['order_date'] . ' +3 days'));
+                    ?>
 
-                    <table class="orders-table">
-                        <thead>
-                            <tr>
-                                <th>Product</th>
-                                <th>Price</th>
-                                <th>Quantity</th>
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($order['items'] as $item): ?>
+                    <section class="order-block">
+
+                        <div class="order-header">
+                            <h2>Order No: <?php echo htmlspecialchars($orderId); ?></h2>
+
+                            <p><strong>Date:</strong>
+                                <?php echo htmlspecialchars($order['order_date']); ?>
+                            </p>
+
+                            <p><strong>Total:</strong>
+                                $<?php echo number_format($total,2); ?>
+                            </p>
+
+                            <p><strong>Delivery ETA:</strong>
+                                <?php echo $deliveryDate; ?>
+                            </p>
+                        </div>
+
+                        <div class="delivery-countdown"
+                            data-delivery="<?php echo $deliveryDate; ?>">
+                        </div>
+
+                        <table class="orders-table">
+
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+
+                            <?php foreach($order['items'] as $item): ?>
+
                                 <tr>
                                     <td><?php echo htmlspecialchars($item['product_name']); ?></td>
-                                    <td>$<?php echo number_format($item['price'], 2); ?></td>
-                                    <td><?php echo (int)$item['quantity']; ?></td>
-                                    <td>$<?php echo number_format($item['price'] * $item['quantity'], 2); ?></td>
+
+                                    <td><?php echo $item['quantity']; ?></td>
+
+                                    <td>$<?php echo number_format($item['price'],2); ?></td>
                                 </tr>
+
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </section>
+
+                            </tbody>
+
+                        </table>
+
+                        <p class="order-note">
+                            Please present correct <strong>Order No</strong> to your delivery-driver to complete the delivery.
+                        </p>
+
+</section>
             <?php endforeach; ?>
         <?php endif; ?>
     </main>

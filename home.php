@@ -105,7 +105,7 @@ $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <!-- Filter Form -->
         <form method="get" class="filter-form">
             <select name="category">
-                <option value="all" <?php if ($category === 'all') echo 'selected'; ?>>None</option>
+                <option value="all" <?php if ($category === 'all') echo 'selected'; ?>>All</option>
                 <option value="Top" <?php if ($category === 'Top') echo 'selected'; ?>>Top</option>
                 <option value="Bottom" <?php if ($category === 'Bottom') echo 'selected'; ?>>Bottom</option>
                 <option value="Shoe" <?php if ($category === 'Shoe') echo 'selected'; ?>>Shoe</option>

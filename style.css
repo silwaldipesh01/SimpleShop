@@ -32,6 +32,13 @@ main{
    NAVBAR
 ========================= */
 
+.welcome-user {
+    color: #fff;
+    font-weight: 600;
+    font-size: 15px;
+    margin-left: 15px;
+    white-space: nowrap;
+}
 .site-header{
     height:60px;
     background:#5146e5;
