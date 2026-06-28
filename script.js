@@ -1,22 +1,43 @@
-// Wait until the entire HTML document has loaded before running this script.
-// This ensures that all elements (like the slider and cart link) exist in the DOM.
 document.addEventListener("DOMContentLoaded", () => {
+  // Swiper
+  if (typeof Swiper !== "undefined" && document.querySelector(".swiper")) {
+    new Swiper(".swiper", {
+      loop: true,
+      pagination: {
+        el: ".swiper-pagination",
+        clickable: true,
+      },
+      navigation: {
+        nextEl: ".swiper-button-next",
+        prevEl: ".swiper-button-prev",
+      }
+    });
+  }
 
-  // Create a new Swiper instance targeting the element with class "swiper".
-  // Swiper is the library that powers the image slider/banner.
-  new Swiper(".swiper", {
-    loop: true, // Makes the slider loop back to the first slide after the last one.
+  // Orders countdown timer
+  const countdownEls = document.querySelectorAll(".delivery-countdown");
 
-    // Pagination settings (the clickable dots under the slider).
-    pagination: {
-      el: ".swiper-pagination", // Target the element with class "swiper-pagination".
-      clickable: true,          // Allow users to click dots to jump to a slide.
-    },
+  countdownEls.forEach((el) => {
+    const deliveryDate = new Date(el.dataset.delivery).getTime();
 
-    // Navigation settings (the left/right arrows).
-    navigation: {
-      nextEl: ".swiper-button-next", // Target the "next" arrow element.
-      prevEl: ".swiper-button-prev", // Target the "previous" arrow element.
-    }
+    const updateCountdown = () => {
+      const now = new Date().getTime();
+      const distance = deliveryDate - now;
+
+      if (distance <= 0) {
+        el.textContent = "Delivered";
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      el.textContent = `Delivery in ${days}d ${hours}h ${minutes}m ${seconds}s`;
+    };
+
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
   });
 });

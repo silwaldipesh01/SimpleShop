@@ -1,155 +1,140 @@
 <?php
-  // Start the PHP session so we can store and access cart data across pages.
-  session_start(); 
+session_start();
+require 'db.php';
 
-  // Require database connection
-  require 'db.php';
+if (!isset($_SESSION['user'])) {
+    header("Location: /SimpleShop/user/auth.php");
+    exit;
+}
 
-  // Session check
-  if (!isset($_SESSION['user'])) {
-      // No session? Try restoring via auth.php
-      header("Location: /SimpleShop/user/auth.php");
-      exit;
-  }  
+if (!isset($_SESSION['cart'])) {
+    $_SESSION['cart'] = [];
+}
 
-  // --- Initialize cart ---
-  // If the cart doesn't exist yet in the session, create an empty array for it.
-  if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
+// Remove item from cart
+if (isset($_POST['delete'])) {
+    $index = (int)$_POST['index'];
+    if (isset($_SESSION['cart'][$index])) {
+        unset($_SESSION['cart'][$index]);
+        $_SESSION['cart'] = array_values($_SESSION['cart']);
+        $_SESSION['flash'] = "Item removed from cart.";
+    }
+    header("Location: cart.php");
+    exit;
+}
 
-  // --- Delete product ---
-  // If the "delete" button was clicked on the cart page:
-  // --- Delete product ---
-  if (isset($_POST['delete'])) {
-      $index = (int)$_POST['index'];
-      if (isset($_SESSION['cart'][$index])) {
-          // Remove the product at the given index from the cart array.
-          unset($_SESSION['cart'][$index]);
-          // Re-index the array so the keys are sequential again.
-          $_SESSION['cart'] = array_values($_SESSION['cart']);
-          $_SESSION['flash'] = "Item removed from cart.";
-      }
-      header("Location: cart.php");
-      exit;
-  }
- 
-  // --- Checkout ---
-  // If the "checkout" button was clicked:
-  if (isset($_POST['checkout'])) {
-    // If the cart is empty, show an error message.
+// Checkout
+if (isset($_POST['checkout'])) {
     if (empty($_SESSION['cart'])) {
-        $message = "<div class='message error'>Cart is empty. Please add items before checkout!</div>";
-    } else {
-      // Adding Commit and Roll-back
-      try {
-        // Begin transaction
+        $_SESSION['flash'] = "Cart is empty. Please add items before checkout!";
+        header("Location: cart.php");
+        exit;
+    }
+
+    try {
         $pdo->beginTransaction();
 
-        // Generate a unique order_id (UUID style)
-        $orderId = uniqid('ORD-'); // e.g. ORD-6670f1a2c3d4e
-          
-        // Insert into orders table
+        // Re-check stock for every item
+        foreach ($_SESSION['cart'] as $item) {
+            $stmt = $pdo->prepare("SELECT stock FROM products WHERE product_id = ?");
+            $stmt->execute([$item['product_id']]);
+            $stockRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            $qty = $item['quantity'] ?? 1;
+            if (!$stockRow || (int)$stockRow['stock'] < $qty) {
+                throw new Exception("Insufficient stock for {$item['name']}.");
+            }
+        }
+
+        // Create order ID
+        $orderId = uniqid('ORD-');
+
+        // Insert into orders
         $stmt = $pdo->prepare("INSERT INTO orders (order_id, user_id) VALUES (?, ?)");
         $stmt->execute([$orderId, $_SESSION['user']]);
 
-        // Insert each cart item into order_items
+        // Insert items and update stock
         foreach ($_SESSION['cart'] as $item) {
-          $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity) VALUES (?, ?, ?)");
-          $stmt->execute([$orderId, $item['product_id'], $item['quantity'] ?? 1]);
+            $qty = $item['quantity'] ?? 1;
 
-          // Update product stock
-          $stmt = $pdo->prepare("UPDATE products SET stock = stock - ? WHERE product_id = ?");
-          $stmt->execute([$item['quantity'] ?? 1, $item['product_id']]);
-        }     
+            $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity) VALUES (?, ?, ?)");
+            $stmt->execute([$orderId, $item['product_id'], $qty]);
 
-        // Commit transaction
+            $stmt = $pdo->prepare("UPDATE products SET stock = stock - ? WHERE product_id = ?");
+            $stmt->execute([$qty, $item['product_id']]);
+        }
+
         $pdo->commit();
-
-        // Clear cart
         $_SESSION['cart'] = [];
         $_SESSION['flash'] = "Order successfully placed! Thank you.";
-
-      } catch (Exception $e) {
-        // Rollback transaction if anything in the try block fails
-        $pdo->rollBack();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $_SESSION['flash'] = "Checkout failed: " . $e->getMessage();
-      }
     }
-    
+
     header("Location: cart.php");
     exit;
-  }
+}
 ?>
 <!DOCTYPE html>
-<html>
-  <head>
-    <!-- Link to the CSS file for styling -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cart - SimpleShop</title>
     <link rel="stylesheet" href="style.css">
-  </head>
- 
-  <body>
-    <div class="page-wrapper">
-      <!-- Navigation bar with links back to home and cart -->
-      <nav>
-        <a href="home.php">Home</a>
-        <!-- Link to the cart page. If cart has items it will get alert class else empty -->
-        <a href="cart.php" id="cart-link" class="<?= !empty($_SESSION['cart'])?'alert':''?>">
-          View Cart 
-          <?= '('.count($_SESSION['cart']).')'?> <!-- Count of items -->
-        </a>
-      </nav>
+</head>
+<body>
+<div class="page-wrapper">
+    <?php include 'header.php'; ?>
 
-      <section class="cart-container">
+    <main class="cart-container">
         <h1>Your Cart</h1>
 
-        <!-- If the cart is not empty, display the items -->
-        <?php if (!empty($_SESSION['cart'])): ?>
-        <div class="cart-items">
-          <?php 
-            // Initialize total cost variable
-            $total = 0;
-            // Loop through each item in the cart
-            foreach ($_SESSION['cart'] as $i => $item):
-              // Add the item price to the total 
-              $quantity = $item['quantity'] ?? 1;
-              $total += $item['price'] * $quantity;
-          ?>
-            <div class="cart-item">
-              <div class="cart-details">
-                <!-- Display product name and price -->
-                <h3><?= htmlspecialchars($item['name']) ?></h3>
-                <p>$<?= number_format($item['price'], 2) ?> (x<?= $quantity ?>)</p>
-              </div>
-              <!-- Delete button for this item -->
-              <form method="post" style="display:inline;">
-                <!-- Hidden input stores the index of the item to delete -->
-                <input type="hidden" name="index" value="<?= $i ?>">
-                <button type="submit" name="delete">Delete</button>
-              </form>
+        <?php if (!empty($_SESSION['flash'])): ?>
+            <div class="message success">
+                <?php echo htmlspecialchars($_SESSION['flash']); ?>
             </div>
-          <?php endforeach; ?>
-        </div>
-
-        <!-- Cart summary section -->
-        <div class="cart-summary">
-          <!-- Display total cost -->
-          <p><strong>Total: $<?= $total ?></strong></p>
-          <!-- Checkout button -->
-          <form method="post">
-            <button type="submit" name="checkout" class="btn-checkout">Checkout</button>
-          </form>
-        </div>
-
-        <!-- If the cart is empty, show a message -->
-        <?php else: ?>
-          <p>Your cart is empty.</p>
+            <?php unset($_SESSION['flash']); ?>
         <?php endif; ?>
 
-        <?php if (isset($_SESSION['flash'])): ?>
-        <div class="message">
-          <?= htmlspecialchars($_SESSION['flash']) ?>
-        </div>
-        <?php unset($_SESSION['flash']); ?>
-      <?php endif; ?>
-    </section>
-  </body>
+        <?php if (!empty($_SESSION['cart'])): ?>
+            <div class="cart-items">
+                <?php
+                $total = 0;
+                foreach ($_SESSION['cart'] as $i => $item):
+                    $quantity = $item['quantity'] ?? 1;
+                    $subtotal = $item['price'] * $quantity;
+                    $total += $subtotal;
+                ?>
+                    <div class="cart-item">
+                        <div class="cart-details">
+                            <h3><?php echo htmlspecialchars($item['name']); ?></h3>
+                            <p>$<?php echo number_format((float)$item['price'], 2); ?> x <?php echo (int)$quantity; ?></p>
+                            <p><strong>Subtotal:</strong> $<?php echo number_format($subtotal, 2); ?></p>
+                        </div>
+                        <form method="post" style="display:inline;">
+                            <input type="hidden" name="index" value="<?php echo $i; ?>">
+                            <button type="submit" name="delete">Delete</button>
+                        </form>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="cart-summary">
+                <p><strong>Total: $<?php echo number_format($total, 2); ?></strong></p>
+                <form method="post">
+                    <button type="submit" name="checkout" class="btn-checkout">Checkout</button>
+                </form>
+            </div>
+        <?php else: ?>
+            <p>Your cart is empty.</p>
+        <?php endif; ?>
+    </main>
+
+    <?php include 'footer.php'; ?>
+</div>
+</body>
 </html>

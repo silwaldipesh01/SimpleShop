@@ -1,138 +1,160 @@
-<?php 
-  // Start a PHP session. This allows us to store data 
-  // across different pages while the user browses.
-  session_start(); 
+<?php
+session_start();
+require 'db.php';
 
-  // Require database connection
-  require 'db.php';
+if (!isset($_SESSION['user'])) {
+    header("Location: /SimpleShop/user/auth.php");
+    exit;
+}
 
-  // Session check
-  if (!isset($_SESSION['user'])) {
-      // No session? Try restoring via auth.php
-      header("Location: /SimpleShop/user/auth.php");
-      exit;
-  }  
-  
-  // --- Initialize cart ---
-  // If the cart doesn't exist yet in the session, create an empty array for it.
-  if (!isset($_SESSION['cart'])) {
+if (!isset($_SESSION['cart'])) {
     $_SESSION['cart'] = [];
-  }
-  
-  // --- Add product ---
-  // If the "add" button was clicked on index.php, add that product to the cart.
-  if (isset($_POST['add'])) {
+}
+
+// Handle Add to Cart
+if (isset($_POST['add'])) {
     $id = (int)$_POST['product_id'];
-    
-    // Fetch product details securely from DB
+
     $stmt = $pdo->prepare("SELECT * FROM products WHERE product_id = ?");
     $stmt->execute([$id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($row && $row['stock'] > 0) {
-      // Each product is stored as an associative array with name and price.
-      $_SESSION['cart'][] = [
-        "product_id" => $row['product_id'],
-        "name" => $row['name'], 
-        "price" => $row['price'], 
-        "stock" => $row['stock'], 
-        "category" => $row['category']];
-      // Store a temporary flag/message in session
-      $_SESSION['flash'] = "Product added to cart successfully!";
+        $_SESSION['cart'][] = [
+            "product_id" => $row['product_id'],
+            "name" => $row['name'],
+            "price" => $row['price'],
+            "quantity" => 1,
+            "stock" => $row['stock'],
+            "category" => $row['category']
+        ];
+        $_SESSION['flash'] = "Product added to cart successfully!";
     } else {
-      $_SESSION['lowstock'] = "Product is out of Stock";
+        $_SESSION['lowstock'] = "Product is out of Stock";
     }
-    
+
     header("Location: home.php");
     exit;
-  }
-?>
+}
 
+// Filtering and sorting
+$category = $_GET['category'] ?? 'all';
+$sort = $_GET['sort'] ?? 'none';
+
+$sql = "SELECT * FROM products";
+$params = [];
+$where = [];
+
+if ($category !== 'all' && $category !== '') {
+    $where[] = "category = ?";
+    $params[] = $category;
+}
+
+if (!empty($where)) {
+    $sql .= " WHERE " . implode(" AND ", $where);
+}
+
+if ($sort === 'asc') {
+    $sql .= " ORDER BY price ASC";
+} elseif ($sort === 'desc') {
+    $sql .= " ORDER BY price DESC";
+}
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+?>
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8"> <!-- Set character encoding so text displays correctly -->
-    <title>Simple Shop</title> <!-- Title shown in browser tab -->
-    
-    <!-- Link to our custom stylesheet for layout and design -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Shop</title>
     <link rel="stylesheet" href="style.css">
-    
-    <!-- Link to Swiper’s CSS (from CDN) so the slider has default styles -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css"/>
-  </head>
-  <body>
-    <!-- Navigation Bar -->
-    <nav>
-      <!-- Link back to the homepage -->
-      <a href="index.php">Home</a>
-      <!-- Link to the cart page. If cart has items it will get alert class else empty -->
-      <a href="cart.php" id="cart-link" class="<?= !empty($_SESSION['cart'])?'alert':''?>">
-        View Cart 
-        <?= '('.count($_SESSION['cart']).')'?> <!-- Count of items -->
-      </a>
-    </nav>
-    
-    <!-- Banner Slider -->
-    <div class="swiper"> <!-- Swiper container -->
-      <div class="swiper-wrapper"> <!-- Holds all slides -->
-        <!-- Each slide contains an image -->
-        <div class="swiper-slide"><img src="images/banner1.jpg" alt="Banner 1"></div>
-        <div class="swiper-slide"><img src="images/banner2.jpg" alt="Banner 2"></div>
-        <div class="swiper-slide"><img src="images/banner3.jpg" alt="Banner 3"></div>
-      </div>
-      
-      <!-- Pagination dots (appear below the slider) -->
-      <div class="swiper-pagination"></div>
-      
-      <!-- Navigation arrows (left/right) -->
-      <div class="swiper-button-prev"></div>
-      <div class="swiper-button-next"></div>
-    </div>
+</head>
+<body>
+<div class="page-wrapper">
+    <?php include 'header.php'; ?>
 
-    <!-- Flash Popup Message-->
-    <?php
-      if (isset($_SESSION['flash'])) {
-        echo "<div class='popup-message'>{$_SESSION['flash']}</div>";
-        unset($_SESSION['flash']);
-      }
+    <main>
+        <!-- Banner Slider -->
+        <div class="swiper">
+            <div class="swiper-wrapper">
+                <div class="swiper-slide"><img src="images/banner1.jpg" alt="Banner 1"></div>
+                <div class="swiper-slide"><img src="images/banner2.jpg" alt="Banner 2"></div>
+                <div class="swiper-slide"><img src="images/banner3.jpg" alt="Banner 3"></div>
+            </div>
+            <div class="swiper-pagination"></div>
+            <div class="swiper-button-prev"></div>
+            <div class="swiper-button-next"></div>
+        </div>
 
-      if (isset($_SESSION['lowstock'])) {
-        echo "<div class='popup-message error'>{$_SESSION['lowstock']}</div>";
-        unset($_SESSION['lowstock']);
-      }
-
-    ?>
-
-    <!-- Product Cards Section -->
-    <div class="products">
-      <?php
-        // Replace array with database fetch
-        $stmt = $pdo->query("SELECT * FROM products");
-        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        if ($products) {
-          foreach ($products as $p) {
-            echo "<div class='card'>
-                    <img src='{$p['image']}' alt='{$p['name']}' class='card-img'>
-                    <div class='card-content'>
-                      <h3>\${$p['price']}</h3>
-                      <p>{$p['name']}</p>
-                      <form action='home.php' method='post'>
-                        <input type='hidden' name='product_id' value='{$p['product_id']}'>
-                        <button type='submit' name='add'>Add to Cart</button>
-                      </form>
-                    </div>
-                  </div>";
-          }
-        } else {
-            echo "<p>No products found.</p>";
+        <?php
+        if (isset($_SESSION['flash'])) {
+            echo "<div class='popup-message'>" . htmlspecialchars($_SESSION['flash']) . "</div>";
+            unset($_SESSION['flash']);
         }
-      ?>
-    </div>
 
-    <!-- Swiper JS (from CDN) provides slider functionality -->
-    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
-    <!-- Our custom script.js file initializes Swiper and handles cart link styling -->
-    <script src="script.js"></script>
-  </body>
+        if (isset($_SESSION['lowstock'])) {
+            echo "<div class='popup-message error'>" . htmlspecialchars($_SESSION['lowstock']) . "</div>";
+            unset($_SESSION['lowstock']);
+        }
+        ?>
+
+        <!-- Filter Form -->
+        <form method="get" class="filter-form">
+            <select name="category">
+                <option value="all" <?php if ($category === 'all') echo 'selected'; ?>>None</option>
+                <option value="Top" <?php if ($category === 'Top') echo 'selected'; ?>>Top</option>
+                <option value="Bottom" <?php if ($category === 'Bottom') echo 'selected'; ?>>Bottom</option>
+                <option value="Shoe" <?php if ($category === 'Shoe') echo 'selected'; ?>>Shoe</option>
+                <option value="Accessories" <?php if ($category === 'Accessories') echo 'selected'; ?>>Accessories</option>
+            </select>
+
+            <select name="sort">
+                <option value="none" <?php if ($sort === 'none') echo 'selected'; ?>>Sort by Price</option>
+                <option value="asc" <?php if ($sort === 'asc') echo 'selected'; ?>>Ascending</option>
+                <option value="desc" <?php if ($sort === 'desc') echo 'selected'; ?>>Descending</option>
+            </select>
+
+            <button type="submit">Apply</button>
+        </form>
+
+        <!-- Products -->
+        <div class="products">
+            <?php if ($products): ?>
+                <?php foreach ($products as $p): ?>
+                    <div class="card">
+                        <img src="<?php echo htmlspecialchars($p['image']); ?>" alt="<?php echo htmlspecialchars($p['name']); ?>" class="card-img">
+                        <div class="card-content">
+                            <h3><?php echo htmlspecialchars($p['name']); ?></h3>
+                            <p>$<?php echo number_format((float)$p['price'], 2); ?></p>
+                            <p class="stock <?php echo ((int)$p['stock'] > 0) ? 'in-stock' : 'out-stock'; ?>">
+                                Stock: <?php echo (int)$p['stock']; ?>
+                            </p>
+
+                            <?php if ((int)$p['stock'] > 0): ?>
+                                <form action="home.php" method="post">
+                                    <input type="hidden" name="product_id" value="<?php echo (int)$p['product_id']; ?>">
+                                    <button type="submit" name="add">Add to Cart</button>
+                                </form>
+                            <?php else: ?>
+                                <button type="button" disabled>Out of Stock</button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p>No products found.</p>
+            <?php endif; ?>
+        </div>
+    </main>
+
+    <?php include 'footer.php'; ?>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script src="script.js"></script>
+</body>
 </html>
